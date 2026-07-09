@@ -32,28 +32,14 @@ export function startAgentHostServer(sockPath: string): Promise<AgentHostServer>
   const server: Server = createServer((sock) => {
     conns.add(sock);
     const conn = new RpcConnection(sock);
-    // 本连接名下发起的 session。共享 host 下多 server 各持一条连接:某 server 断线时
-    // 只 reap 它自己的 session(I4 隔离),不波及别的 server;host.shutdownAll 仅留给
-    // host 进程整体退出。session 自然退出 → onExit 剪枝,避免集合无限增长。
-    const owned = new Set<string>();
-    const unsubExit = host.onExit((info) => { owned.delete(info.sessionId); conn.notify('exit', info); });
+    const unsubExit = host.onExit((info) => conn.notify('exit', info));
     const unsubData = host.onData((sessionId, stream, chunk) => conn.notify('data', { sessionId, stream, chunk }));
-    sock.on('close', () => {
-      unsubExit(); unsubData(); conns.delete(sock);
-      // 按连接 reap:整组收割本连接名下 session(shutdownSession 对已退出 sid 幂等)。
-      for (const sid of owned) void host.shutdownSession(sid).catch(() => {});
-      owned.clear();
-    });
+    sock.on('close', () => { unsubExit(); unsubData(); conns.delete(sock); });
     sock.on('error', () => { /* client gone */ });
     conn.setRequestHandler(async (method, params) => {
       switch (method) {
         case 'ping': return host.ping();
-        case 'startSession': {
-          const req = params as StartSessionReq;
-          const grant = await host.startSession(req);
-          owned.add(req.sessionId); // spawn 成功才登记归属;失败会抛,不进 owned
-          return grant;
-        }
+        case 'startSession': return host.startSession(params as StartSessionReq);
         case 'cancel': return void (await host.cancel(String((params as { callId: string }).callId)));
         case 'shutdownSession': return void (await host.shutdownSession(String((params as { sessionId: string }).sessionId)));
         case 'getProcess': return host.getProcess(String((params as { sessionId: string }).sessionId));
