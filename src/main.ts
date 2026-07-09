@@ -8,7 +8,6 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { connect } from './ipc';
 import { startAgentHostServer } from './server';
 import { sweepOrphans } from './orphan-registry';
@@ -63,13 +62,7 @@ export async function main(): Promise<void> {
   process.on('SIGTERM', () => void shutdown());
 }
 
-// 直接运行(bun / node)时执行,被 import 为库时不执行。
-// Bun 有 `import.meta.main`;Node(< 24.2)没有 → 回退:比对入口脚本路径。
-// 这是 node-runnable 化漏网的一处 Bun 专属 API —— 之前 node 下 main() 从不执行,
-// agent-host 静默不监听,sidecar 报 "not reachable after spawn"。
-const runAsEntry =
-  (import.meta as { main?: boolean }).main ??
-  (process.argv[1] ? import.meta.url === pathToFileURL(process.argv[1]).href : false);
-if (runAsEntry) {
+// 直接 `bun src/main.ts` 运行(非被 import 时)。
+if (import.meta.main) {
   main().catch((e) => { process.stderr.write(`[agent-host] fatal: ${(e as Error).message}\n`); process.exit(1); });
 }
