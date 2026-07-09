@@ -1,18 +1,24 @@
 {
   "name": "@forgeax/agent-host",
-  "version": "0.1.0",
+  "version": "0.1.4",
   "private": true,
   "type": "module",
   "description": "forgeax ring-0 sidecar — kernel process supervision + IPC control plane (R3 阶段1脊梁). Self-contained leaf: zero @forgeax/* deps, independently cloneable.",
+  "main": "./dist/index.js",
   "exports": {
-    ".": "./src/index.ts",
-    "./client": "./src/types.ts",
-    "./serve": "./src/main.ts"
+    ".": "./dist/index.js",
+    "./client": "./dist/types.js",
+    "./serve": "./dist/main.js"
   },
   "bin": {
-    "forgeax-agent-host": "./src/main.ts"
+    "forgeax-agent-host": "./dist/main.js"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
+    "build": "bun build.mjs",
+    "pack:tgz": "npm pack",
     "start": "bun src/main.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",

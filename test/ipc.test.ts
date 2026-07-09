@@ -34,4 +34,29 @@ describe('ipc framing', () => {
     expect(msgs).toHaveLength(1);
     expect((msgs[0] as { id: number }).id).toBe(9);
   });
+
+  // 回归:socket 分片落在多字节 UTF-8 序列中间(大 charter 高发)。旧实现 `chunk.toString('utf8')`
+  // 会把不完整尾字节解成 U+FFFD 并丢字节,静默损坏中文指令词(验收报告 A.5)。
+  test('字节级半包:多字节 UTF-8 被拆到两片 → 无 U+FFFD、内容无损', () => {
+    const parse = createFrameParser();
+    const charter = '你不能删除方案'.repeat(2000); // 够大,保证被切在多字节序列中间
+    const full = Buffer.from(encodeFrame({ jsonrpc: '2.0', id: 42, method: 'runTurn', params: { charter } }), 'utf8');
+    // 从中间某字节切开(极可能落在一个 3 字节汉字内部)。
+    const cut = Math.floor(full.length / 2);
+    expect(parse(full.subarray(0, cut))).toHaveLength(0); // 不完整帧不吐
+    const msgs = parse(full.subarray(cut));
+    expect(msgs).toHaveLength(1);
+    const got = (msgs[0] as { params: { charter: string } }).params.charter;
+    expect(got).toBe(charter);
+    expect(got.includes('�')).toBe(false);
+  });
+
+  test('逐字节喂多字节字符 → 无损', () => {
+    const parse = createFrameParser();
+    const line = Buffer.from(encodeFrame({ jsonrpc: '2.0', id: 1, method: 'x', params: { s: '不能方案①🎮' } }), 'utf8');
+    const out = [];
+    for (const b of line) out.push(...parse(Buffer.from([b])));
+    expect(out).toHaveLength(1);
+    expect((out[0] as { params: { s: string } }).params.s).toBe('不能方案①🎮');
+  });
 });

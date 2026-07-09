@@ -3,6 +3,7 @@
  * 帧 = 一行 JSON + `\n`。支持请求/响应(id 关联)+ 单向通知(如 sidecar→server 的 exit 事件)。
  */
 import { connect as netConnect, type Socket } from 'node:net';
+import { StringDecoder } from 'node:string_decoder';
 
 export interface RpcRequest { jsonrpc: '2.0'; id: number; method: string; params?: unknown }
 export interface RpcNotify { jsonrpc: '2.0'; method: string; params?: unknown }
@@ -30,11 +31,16 @@ export function connect(sockPath: string, timeoutMs = 2000): Promise<RpcConnecti
   });
 }
 
-/** 半包/粘包安全:喂 chunk,吐完整消息。 */
+/** 半包/粘包安全:喂 chunk,吐完整消息。
+ *  ⚠️ 用 StringDecoder(而非 `chunk.toString('utf8')`)解 Buffer:socket 分片可能落在
+ *  多字节 UTF-8 序列**中间**,`toString` 会把不完整的尾字节解成 `U+FFFD` 替换符并丢弃,
+ *  下一片开头残字节再解成第二个坏字符 —— 大 charter(system prompt)静默损坏中文指令词
+ *  (如"不能"→"不��",见验收报告 A.5)。StringDecoder 会把不完整尾字节缓到下一片再解。 */
 export function createFrameParser(): (chunk: Buffer | string) => RpcMessage[] {
+  const decoder = new StringDecoder('utf8');
   let buf = '';
   return (chunk) => {
-    buf += typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+    buf += typeof chunk === 'string' ? chunk : decoder.write(chunk);
     const out: RpcMessage[] = [];
     let i: number;
     while ((i = buf.indexOf('\n')) >= 0) {
@@ -78,6 +84,10 @@ export class RpcConnection {
 
   setRequestHandler(h: RequestHandler): void { this.reqHandler = h; }
   onNotify(h: NotifyHandler): void { this.notifyHandler = h; }
+
+  /** 连接是否仍打开(peer 未 reset、未被 close())。复用方在复用一条连接前探测存活,
+   *  避免向已死连接发请求换来一轮 'connection closed' 才被动自愈。 */
+  get isOpen(): boolean { return !this.closed; }
 
   request(method: string, params?: unknown): Promise<unknown> {
     if (this.closed) return Promise.reject(new Error('connection closed'));

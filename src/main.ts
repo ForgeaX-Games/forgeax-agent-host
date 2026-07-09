@@ -8,6 +8,7 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { connect } from './ipc';
 import { startAgentHostServer } from './server';
 import { sweepOrphans } from './orphan-registry';
@@ -62,7 +63,11 @@ export async function main(): Promise<void> {
   process.on('SIGTERM', () => void shutdown());
 }
 
-// 直接 `bun src/main.ts` 运行(非被 import 时)。
-if (import.meta.main) {
+// 直接运行(node `dist/main.js` / `src/main.ts`)时执行,被 import 为库时不执行。
+// 用 node-portable 的入口脚本路径比对。**不用 `import.meta.main`**:它是 Bun/Node≥24.2 专属,
+// 且 bun build 会把它转成引用 `__require` 的 polyfill(ESM 产物里恒为真甚至崩溃)。
+const runAsEntry =
+  process.argv[1] ? import.meta.url === pathToFileURL(process.argv[1]).href : false;
+if (runAsEntry) {
   main().catch((e) => { process.stderr.write(`[agent-host] fatal: ${(e as Error).message}\n`); process.exit(1); });
 }
