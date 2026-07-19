@@ -10,7 +10,7 @@
 //   - node: builtins
 // (实测:src/ 当前 0 个非相对/非 node: import —— 本规则把这一不变量固化进 CI。)
 //
-// 与 packages/core / packages/cli 的 .dependency-cruiser.cjs 同形态 (三核心包统一守门)。
+// 与 packages/cli / packages/orchestrator 的 .dependency-cruiser.cjs 同形态 (三核心包统一守门)。
 // 运行: bun run lint:boundaries  (= depcruise -c .dependency-cruiser.cjs src)
 //
 module.exports = {
@@ -20,7 +20,7 @@ module.exports = {
       severity: 'error',
       comment:
         'ring-0 sidecar 是自含 TCB:src/ 只许 import 自身相对路径 + node: builtins。' +
-        '任何跨包源码 import (forgeax-core / forgeax-cli / server / interface / studio / ' +
+        '任何跨包源码 import (forgeax-core / @forgeax/orchestrator / server / interface / studio / ' +
         '其它 @forgeax/* —— workspace 解析后落到 ../<pkg>/src) 一律禁止:依赖方向只能 ' +
         'host ← 消费方,反向会让 sidecar 倒挂业务层 (评审稿 P4 修过一次,勿回退)。' +
         '** allow-list 写法**:因 @forgeax/* 经 workspace symlink 解析成 ../<pkg>/src ' +
